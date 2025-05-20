@@ -8,17 +8,21 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+var Mongo = InitMongo()
+
 func InitMongo() *mongo.Database {
-	client, err := mongo.Connect(options.Client().ApplyURI(
-		"mongodb://localhost:27017"))
+	
+	client, err := mongo.Connect(options.Client().
+ApplyURI("mongodb://localhost:27017"))
+
 	if err != nil {
-		log.Println("Connect MongoDB error: ", err)
-		return nil
+		log.Fatal("无法连接到MongoDB:", err)
 	}
-	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			log.Println("Disconnect MongoDB error: ", err)
-		}
-	}()
+
+	err = client.Ping(context.Background(), nil)
+	if err != nil {
+		log.Fatal("Fail to Ping mongo db : ", err)
+	}
+
 	return client.Database("GOIM")
 }

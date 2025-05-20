@@ -1,6 +1,8 @@
 package main
 
-import "GOIM/router"
+import (
+	"GOIM/router"
+)
 
 func main() {
 	r := router.Router()

@@ -1,21 +1,89 @@
 package models
 
 import (
+	"GOIM/helper"
+	"context"
+	"fmt"
 	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+)
+
+const (
+	UserStatusOnline   = 1
+	UserStatusOffline  = 0
+	UserStatusInvisible = 2
 )
 
 type User struct {
-	ID        string    `bson:"_id"`
-	Account   string    `bson:"account"`
-	Password  string    `bson:"password"`
-	Nickname  string    `bson:"nickname"`
-	Gender    bool      `bson:"gender"` // false 女 true 男
-	Email     string    `bson:"email"`
-	Avatar    string    `bson:"avatar"`
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
+	ID        bson.ObjectID    `bson:"_id,omitempty" json:"_id"`	
+	Account   string    `bson:"account" json:"account"`
+	Password  string    `bson:"password" json:"-"`
+	Nickname  string    `bson:"nickname" json:"nickname"`
+	Gender    bool      `bson:"gender" json:"gender"` // false 女 true 男
+	Email     string    `bson:"email" json:"email"`
+	Avatar    string    `bson:"avatar" json:"avatar"`
+	Status    int       `bson:"status" json:"status"` // 0 离线 1 在线 2 隐身
+	CreatedAt time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
+	LastLogin time.Time `bson:"last_login" json:"last_login"`
 }
 
 func (User) CollectionName() string {
 	return "user"
+}
+
+func GetUserByAccountPassword(account, password string) (*User, error) {
+	u := new(User)
+	err := Mongo.Collection(User{}.CollectionName()).
+		FindOne(context.Background(), bson.D{
+			{Key: "account", Value: account},
+		}).Decode(u)
+	if err != nil {
+		return nil, err
+	}
+	if !helper.CheckPassword(password, u.Password) {
+		return nil, fmt.Errorf("密码错误")
+	}
+	return u, nil
+}
+
+func GetUserByAccount(account string) (*User, error) {
+	u := new(User)
+	err := Mongo.Collection(User{}.CollectionName()).FindOne(
+		context.Background(), bson.D{
+			{Key: "account", Value: account},
+		},
+	).Decode(u)
+	return u, err
+}
+
+func GetUserByID(ID bson.ObjectID)(*User, error) {
+	u := new(User)
+
+	err:= Mongo.Collection(User{}.CollectionName()).
+	FindOne(context.Background(), bson.D{
+		{Key:"_id", Value:ID},
+	}).Decode(u)
+	return u, err
+}
+
+func GetUserCountByEmail( email string)(int64, error) {
+	return Mongo.Collection(User{}.CollectionName()).
+	CountDocuments(context.Background(), bson.D{
+		{Key:"email", Value:email},
+	})
+}
+
+func GetUserCountByAccount(account string)(int64, error) {
+	return Mongo.Collection(User{}.CollectionName()).
+	CountDocuments(context.Background(), bson.D{
+		{Key:"account", Value:account},
+	})
+}
+
+func InsertOntUser(u *User) error {
+	_, err := Mongo.Collection(User{}.CollectionName()).
+	InsertOne(context.Background(), u)
+	return err
 }
