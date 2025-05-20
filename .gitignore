@@ -47,5 +47,4 @@ temp/
 # 配置文件
 config.local.yaml
 config.dev.yaml
-.yaml
-.yml
+config.yaml
