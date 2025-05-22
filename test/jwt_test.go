@@ -4,10 +4,12 @@ import (
 	"GOIM/helper"
 	"fmt"
 	"testing"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func TestGenerateAndParseToken(t *testing.T) {
-	id := "123"
+	id := bson.NewObjectID()
 	email := "123456"
 	
 	token, err := helper.GenerateToken(id, email)

@@ -13,7 +13,7 @@ var SendEmail string
 var MailPassword string
 
 func init() {
-	viper.SetConfigFile("../config.yaml")
+	viper.SetConfigFile("config.yaml")
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalln("fail to read config file" + err.Error())

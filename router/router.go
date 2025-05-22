@@ -17,9 +17,11 @@ func Router() *gin.Engine {
 		{
 			user.POST("/login", service.Login)
 			user.POST("/register", service.Register)
+			user.POST("/sendcode", service.SendCode)
 			auth := user.Group("/", middlewares.AuthCheck())
 			{
 				auth.GET("/info", service.GetUserInfo)
+				auth.GET("/websocket/message", service.WebSocketMessage)
 			}
 		}
 	}
