@@ -35,11 +35,14 @@ func WebSocketMessage(c *gin.Context) {
 	for {
 		ms := new(MessageStruct)
 		err = conn.ReadJSON(ms)
+		// TODO: 判断用户是否属于消息体的房间
 		if err != nil {
 			log.Printf("Read Error: %v\n", err)
 			return
 		}
 
+		// TODO: 保存消息
+		// TODO: 获取在特定房间的在线用户
 		for _, c := range wc {
 			err = c.WriteMessage(websocket.TextMessage, []byte(ms.Message))
 			if err != nil {
