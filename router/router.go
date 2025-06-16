@@ -22,10 +22,10 @@ func Router() *gin.Engine {
 			{
 				auth.GET("/info", service.GetUserInfo)
 				auth.GET("/websocket/message", service.WebSocketMessage)
+				auth.GET("/chat/list", service.ChatList)
 			}
 		}
 	}
-
 
 	return r
 }

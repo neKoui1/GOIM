@@ -355,3 +355,204 @@ sequenceDiagram
 - **自动响应规则**：
   - 端点收到 Ping 后必须立即回复 Pong
   - 不允许多个未响应 Ping 同时存在
+
+# Mongodb工作原理
+
+## Document Model
+
+* 数据存储的基本单位是`document`，是一种类似JSON的数据结构(Binary JSON)
+* 是灵活的键值对集合
+
+## Collection
+
+* 一组文档的容器。相当于关系型数据库的表
+* **无模式**，同一个集合中的文档可以拥有不同的结构（字段）
+
+## Database
+
+* 多个集合Collection的逻辑分组
+* 一个MongoDB实例可以托管多个数据库
+
+## BSON
+
+- MongoDB 在内部使用 BSON 来存储文档和通过网络传输数据
+- BSON 是 JSON 的二进制编码形式，扩展了 JSON 的数据类型（如 Date, Binary Data, ObjectId 等），并且更高效地进行解析和遍历
+
+## 分布式架构
+
+- **副本集 (Replica Set):** MongoDB 实现高可用性的主要方式。
+  - 一个副本集包含多个 MongoDB 实例（节点），通常包括：一个 **主节点** 和多个 **从节点**。
+  - 主节点：处理所有的**写操作**。
+  - 从节点：复制主节点的数据，可以处理**读操作**（提供读取扩展），并在主节点故障时自动选举出一个新的主节点（实现自动故障转移）。
+- **分片 (Sharding):** MongoDB 实现水平扩展（处理海量数据和超高吞吐量）的方式。
+  - 将单个大型集合的数据**水平拆分**，并分布到多个 MongoDB 实例（称为 **分片**）上。
+  - 每个分片可以是一个独立的 MongoDB 实例，但**强烈建议**每个分片本身是一个副本集（保证分片内的高可用）。
+  - **分片键 (Shard Key):** 选择一个或多个字段作为如何拆分数据的依据。MongoDB 根据分片键的值决定文档存储在哪个分片上。
+  - **查询路由 (mongos):** 应用程序连接到一个特殊的进程 `mongos`（查询路由器）。`mongos` 知道数据分布在哪些分片上，并将查询和写操作路由到正确的分片（或多个分片）。应用程序通常只与 `mongos` 交互，无需直接连接底层分片。
+
+## 索引Indexing
+
+- 为了提高查询性能，MongoDB 支持在文档的字段上创建索引（如单字段索引、复合索引、多键索引、文本索引、地理空间索引等）
+- 索引的工作原理类似于书的目录，允许数据库快速定位数据，避免全集合扫描
+
+## 如何使用go mongo driver优雅的连接关闭mongodb
+
+```mermaid
+sequenceDiagram
+    participant UserRequest
+    participant GetMongo
+    participant initOnce
+    participant ConnectMongoDB
+    participant createIndexes
+    participant registerShutdownHook
+    
+    UserRequest->>+GetMongo: 首次调用（如 InsertOneMessage）
+    GetMongo->>+initOnce: 执行一次性初始化
+    initOnce->>+ConnectMongoDB: 建立数据库连接
+    ConnectMongoDB-->>-initOnce: 连接成功
+    initOnce->>+createIndexes: 创建所有索引
+    createIndexes-->>-initOnce: 索引创建完成
+    initOnce->>+registerShutdownHook: 注册关闭钩子
+    registerShutdownHook-->>-initOnce: 启动监听goroutine
+    initOnce-->>-GetMongo: 返回数据库实例
+    GetMongo-->>-UserRequest: 返回结果
+    
+    Note right of registerShutdownHook: 后台运行，等待信号
+    
+    OS->>+registerShutdownHook: 发送SIGINT/SIGTERM
+    registerShutdownHook->>+CloseMongo: 关闭数据库连接
+    CloseMongo-->>-registerShutdownHook: 连接关闭
+```
+
+```go
+package models
+
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+)
+
+var (
+	Mongo        *mongo.Database
+	mongoClient  *mongo.Client
+	initOnce     sync.Once
+	shutdownOnce sync.Once
+)
+
+func GetMongo() *mongo.Database {
+	initOnce.Do(func() {
+		ConnectMongoDB()
+		createIndexes()
+		registerShutdownHook()
+	})
+	return Mongo
+}
+
+// 初始化MongoDB连接
+func ConnectMongoDB() {
+	uri := "mongo://localhost:27017"
+	clientOptions := options.Client().
+		ApplyURI(uri).
+		SetMaxPoolSize(100).
+		SetMinPoolSize(10).
+		SetConnectTimeout(10 * time.Second).
+		SetServerSelectionTimeout(10 * time.Second)
+	client, err := mongo.Connect(clientOptions)
+	if err != nil {
+		log.Fatalf("Fail to connect to mongodb: %v\n", err)
+	}
+
+	if err = client.Ping(context.Background(), nil); err != nil {
+		log.Fatalf("Fail to ping mongodb: %v\n", err)
+	}
+
+	mongoClient = client
+	Mongo = client.Database("GOIM")
+	log.Println("Connect to mongodb successfully")
+}
+
+func registerShutdownHook() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-c
+		shutdownOnce.Do(func() {
+			log.Println("接收到关闭信号，正在断开mongodb连接")
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				5*time.Second,
+			)
+			defer cancel()
+			if err := mongoClient.Disconnect(ctx); err != nil {
+				log.Printf("关闭mongodb连接失败: %v", err)
+			} else {
+				log.Println("mongodb连接已关闭")
+			}
+		})
+	}()
+}
+
+// 由main函数调用，关闭mongodb连接
+func CloseMongo() {
+	shutdownOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			5*time.Second,
+		)
+		defer cancel()
+		if err := mongoClient.Disconnect(ctx); err != nil {
+			log.Printf("关闭mongodb连接失败: %v", err)
+		}
+	})
+}
+
+func createIndexes() {
+	log.Println("开始创建数据库索引...")
+	createMessageIndexes()
+	log.Println("数据库索引创建完成")
+}
+
+func createMessageIndexes() {
+	collection := Mongo.Collection(Message{}.CollectionName())
+	indexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "room_id", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("room_created_desc"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "user_id", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("user_created_desc"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "created_at", Value: -1},
+			},
+			Options: options.Index().SetName("created_at_desc"),
+		},
+	}
+
+	_, err := collection.Indexes().CreateMany(context.Background(), indexes)
+	if err != nil {
+		log.Printf("消息索引创建失败: %v\n", err)
+	} else {
+		log.Println("消息索引创建成功")
+	}
+}
+```
+
