@@ -57,11 +57,11 @@ func ChatList(c *gin.Context) {
 	}
 	skip := (pageIndex - 1) * pageSize
 	// 在数据库中查找聊天记录
-	msgData, err := models.GetMessageListByRoomID(roomID, &pageSize, &skip)
+	msgData, err := models.GetMessageListByRoomID(roomID, pageSize, skip)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
-			"msg":  "系统异常: " + err.Error(),
+			"msg":  "[DB ERROR]: Pagination Message List Error + " + err.Error(),
 		})
 		return
 	}

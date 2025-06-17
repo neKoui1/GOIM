@@ -23,18 +23,18 @@ func (Message) CollectionName() string {
 func InsertOntMessage(msg *Message) error {
 	msg.CreatedAt = time.Now()
 	msg.UpdatedAt = time.Now()
-	_, err := Mongo.Collection(Message{}.CollectionName()).
+	_, err := GetMongo().Collection(Message{}.CollectionName()).
 		InsertOne(context.Background(), msg)
 	return err
 }
 
-func GetMessageListByRoomID(roomID bson.ObjectID, limit *int64, skip *int64) ([]*Message, error) {
+func GetMessageListByRoomID(roomID bson.ObjectID, limit int64, skip int64) ([]*Message, error) {
 	data := make([]*Message, 0)
 	findOptions := options.Find()
-	findOptions.SetLimit(*limit).SetSkip(*skip).SetSort(bson.D{
+	findOptions.SetLimit(limit).SetSkip(skip).SetSort(bson.D{
 		{Key: "created_time", Value: -1},
 	})
-	cursor, err := Mongo.Collection(Message{}.CollectionName()).Find(
+	cursor, err := GetMongo().Collection(Message{}.CollectionName()).Find(
 		context.Background(),
 		bson.M{
 			"room_id": roomID,

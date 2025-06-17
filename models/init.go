@@ -25,14 +25,14 @@ func GetMongo() *mongo.Database {
 	initOnce.Do(func() {
 		ConnectMongoDB()
 		createIndexes()
-		registerShutdownHook()
+		// registerShutdownHook()
 	})
 	return Mongo
 }
 
 // 初始化MongoDB连接
 func ConnectMongoDB() {
-	uri := "mongo://localhost:27017"
+	uri := "mongodb://localhost:27017"
 	clientOptions := options.Client().
 		ApplyURI(uri).
 		SetMaxPoolSize(100).
@@ -58,7 +58,7 @@ func registerShutdownHook() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		<-c
+		<-c //阻塞等待信号
 		shutdownOnce.Do(func() {
 			log.Println("接收到关闭信号，正在断开mongodb连接")
 			ctx, cancel := context.WithTimeout(
@@ -85,6 +85,8 @@ func CloseMongo() {
 		defer cancel()
 		if err := mongoClient.Disconnect(ctx); err != nil {
 			log.Printf("关闭mongodb连接失败: %v", err)
+		} else {
+			log.Println("mongodb连接已关闭")
 		}
 	})
 }

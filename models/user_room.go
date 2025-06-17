@@ -20,7 +20,7 @@ func (UserRoom) CollectionName() string {
 
 func GetUserRoomByUserIDRoomID(userID bson.ObjectID, roomID bson.ObjectID) (*UserRoom, error) {
 	ur := new(UserRoom)
-	err := Mongo.Collection(UserRoom{}.CollectionName()).
+	err := GetMongo().Collection(UserRoom{}.CollectionName()).
 		FindOne(context.Background(), bson.D{
 			{Key: "user_id", Value: userID},
 			{Key: "room_id", Value: roomID},
@@ -32,7 +32,7 @@ func GetUserRoomByUserIDRoomID(userID bson.ObjectID, roomID bson.ObjectID) (*Use
 }
 
 func GetUserRoomByRoomID(roomID bson.ObjectID) ([]*UserRoom, error) {
-	cursor, err := Mongo.Collection(UserRoom{}.CollectionName()).Find(context.Background(), bson.D{
+	cursor, err := GetMongo().Collection(UserRoom{}.CollectionName()).Find(context.Background(), bson.D{
 		{Key: "room_id", Value: roomID},
 	})
 	if err != nil {

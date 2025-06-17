@@ -395,7 +395,7 @@ sequenceDiagram
 - 为了提高查询性能，MongoDB 支持在文档的字段上创建索引（如单字段索引、复合索引、多键索引、文本索引、地理空间索引等）
 - 索引的工作原理类似于书的目录，允许数据库快速定位数据，避免全集合扫描
 
-## 如何使用go mongo driver优雅的连接关闭mongodb
+# 如何使用go mongo driver优雅的连接关闭mongodb
 
 ```mermaid
 sequenceDiagram
@@ -554,5 +554,305 @@ func createMessageIndexes() {
 		log.Println("消息索引创建成功")
 	}
 }
+```
+
+# 在`maintainMongoConnection`中添加心跳检测机制
+
+```go
+func maintainConnection() {
+    ticker := time.NewTicker(5 * time.Minute)
+    defer ticker.Stop()
+    
+    for range ticker.C {
+        if err := mongoClient.Ping(context.Background(), nil); err != nil {
+            log.Println("数据库连接异常，尝试重连...")
+            reconnectMongo()
+        }
+    }
+}
+```
+
+# 使用信号量监听程序关闭
+
+| 信号              | 类型/值                               | 来源/触发方式              |
+| :---------------- | :------------------------------------ | :------------------------- |
+| `os.Interrupt`    | Go 定义的常量 (值为 `syscall.SIGINT`) | 用户终端操作 (Ctrl+C)      |
+| `syscall.SIGINT`  | 系统调用级别的信号值                  | POSIX 标准信号 (信号值 2)  |
+| `syscall.SIGTERM` | 系统调用级别的信号值                  | POSIX 标准信号 (信号值 15) |
+
+`os.Interrupt`和`syscall.SIGINT`本质上相同，`os.Interrupt`是标准库对`syscall.SIGINT`的封装
+
+- `syscall.SIGINT`：直接使用系统调用层的信号值
+- `os.Interrupt`：提供跨平台一致的抽象（Windows 和 Unix 系统处理方式不同）
+
+| 特性             | SIGINT (信号 2)           | SIGTERM (信号 15)              |
+| :--------------- | :------------------------ | :----------------------------- |
+| **触发方式**     | 用户终端操作 (Ctrl+C)     | `kill` 命令默认发送            |
+| **设计目的**     | 中断前台进程              | 请求程序正常终止               |
+| **可捕获性**     | 可捕获和处理              | 可捕获和处理                   |
+| **默认行为**     | 终止进程                  | 终止进程                       |
+| **优雅退出**     | 适合用于用户交互式终止    | 适合系统管理工具和容器编排系统 |
+| **强制程度**     | 中等 (可被捕获忽略)       | 中等 (可被捕获忽略)            |
+| **不可捕获信号** | SIGKILL (信号 9) 不可捕获 | SIGKILL (信号 9) 不可捕获      |
+
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+)
+
+func main() {
+
+	// r := router.Router()
+	// r.Run(":8080")
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(
+		sigChan,
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	fmt.Println("程序启动，PID=", os.Getpid())
+	fmt.Println("发送信号")
+
+	fmt.Println("用户中断：ctrl+c SIGINT")
+	fmt.Println("终止命令：kill ", os.Getpid(), "SIGTERM")
+
+	sig := <-sigChan
+	fmt.Printf("\n接收到信号: %v\n", sig)
+	switch sig {
+	case os.Interrupt:
+		fmt.Println("处理用户中断")
+	case syscall.SIGTERM:
+		fmt.Println("处理中止请求")
+	}
+	fmt.Println("执行清理操作")
+	fmt.Println("程序退出")
+}
+
+```
+
+| 环境           | 主要信号         | 说明                   |
+| :------------- | :--------------- | :--------------------- |
+| **本地终端**   | SIGINT (Ctrl+C)  | 开发者手动中断         |
+| **Docker**     | SIGTERM          | `docker stop` 默认发送 |
+| **Kubernetes** | SIGTERM          | Pod 终止时首先发送     |
+| **Systemd**    | SIGTERM + SIGINT | 两者都会被系统发送     |
+| **云函数**     | SIGTERM          | 资源回收时发送         |
+
+```mermaid
+graph LR
+A[用户按 Ctrl+C] --> B(发送 SIGINT)
+C[kill <pid>] --> D(发送 SIGTERM)
+E[容器停止命令] --> D
+B --> F[Go 程序捕获 os.Interrupt]
+D --> G[Go 程序捕获 syscall.SIGTERM]
+F --> H[执行优雅关闭逻辑]
+G --> H
+```
+
+使用`os.Interrupt`是为了保证跨平台行为一致
+
+```go
+// 跨平台正确的做法
+signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+// Windows 上等效于：
+//   signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGTERM)
+// Unix 上等效于：
+//   signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+```
+
+| 特性         | `os.Interrupt`        | `syscall.SIGINT`       | `syscall.SIGTERM`      |
+| :----------- | :-------------------- | :--------------------- | :--------------------- |
+| **本质**     | Go 的跨平台抽象       | POSIX 标准信号         | POSIX 标准信号         |
+| **推荐使用** | ✅ 用于用户中断        | ⚠️ 直接使用有平台限制   | ✅ 用于系统终止请求     |
+| **主要来源** | 用户终端 (Ctrl+C)     | 同 os.Interrupt        | kill 命令/容器编排系统 |
+| **跨平台**   | ✅ Go 自动处理平台差异 | ❌ 不同平台行为可能不同 | ⚠️ 大部分平台一致       |
+| **使用场景** | 交互式程序            | 底层系统编程           | 服务/后台程序          |
+
+# `context.WithTimeOut`的作用
+
+在mongodb中，执行关闭操作时用到了`context.WithTimeOut`函数
+
+```go
+	go func() {
+		<-c //阻塞等待信号
+		shutdownOnce.Do(func() {
+			log.Println("接收到关闭信号，正在断开mongodb连接")
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				5*time.Second,
+			)
+			defer cancel()
+			if err := mongoClient.Disconnect(ctx); err != nil {
+				log.Printf("关闭mongodb连接失败: %v", err)
+			} else {
+				log.Println("mongodb连接已关闭")
+			}
+		})
+	}()
+```
+
+作用如下：
+
+* **设置超时限制**：确保关闭操作不会无限期阻塞
+* **防止程序挂起**：在数据库无响应时强制终止关闭操作
+* **资源保护**：避免因为关闭操作卡住导致整个应用无法退出
+
+```mermaid
+graph LR
+A[context.Background] --> B[context.WithTimeout]
+B --> C[ctx]
+B --> D[cancel]
+C --> E[传递给Disconnect]
+D --> F[defer cancel]
+```
+
+| 返回值   | 类型                 | 作用               |              使用要点               |
+| :------- | :------------------- | :----------------- | :---------------------------------: |
+| `ctx`    | `context.Context`    | **带超时的上下文** |      传递给需要超时控制的操作       |
+| `cancel` | `context.CancelFunc` | **取消函数**       | 1. 提前结束超时计时 2. 释放相关资源 |
+
+完整的执行流程如下：
+
+```mermaid
+sequenceDiagram
+    participant App as 应用程序
+    participant Ctx as 上下文系统
+    participant Driver as 数据库驱动
+    participant Network as 网络层
+    
+    App->>Ctx: 创建5秒超时上下文
+    App->>Driver: 调用Disconnect(ctx)
+    
+    alt 正常关闭(≤5秒)
+        Driver->>Network: 发送关闭请求
+        Network-->>Driver: 确认关闭
+        Driver-->>App: 返回nil
+    else 超时(>5秒)
+        Ctx->>Ctx: 启动5秒计时器
+        Driver->>Network: 发送关闭请求
+        Network--xDriver: 无响应
+        Ctx->>Driver: 5秒后发送取消信号
+        Driver->>Driver: 中止关闭操作
+        Driver-->>App: 返回context.DeadlineExceeded
+    end
+```
+
+即使操作已经完成，也必须调用`defer cancel()`
+
+* 释放资源：每个context都会启动后台计时器，不调用cancel会导致goroutine泄露
+
+```go
+ctx, cancel := context.WithTimeout(...)
+defer cancel() // 确保任何情况下都调用
+```
+
+```mermaid
+graph TD
+A[数据库无响应] --> B[传统阻塞调用]
+B --> C[应用线程挂起]
+C --> D[线程池耗尽]
+D --> E[整个应用冻结]
+
+F[数据库无响应] --> G[超时上下文]
+G --> H[强制终止操作]
+H --> I[释放资源]
+I --> J[应用继续运行]
+```
+
+# Gin框架的服务器并发启动
+
+```mermaid
+sequenceDiagram
+    participant Main as 主 goroutine
+    participant Server as 服务器 goroutine
+    participant OS as 操作系统
+    
+    Main->>Server: 启动 goroutine (go func()...)
+    Note over Server: 新线程开始执行
+    Server->>OS: 绑定端口 :8080 (Listen)
+    Server->>OS: 开始接受连接 (Accept)
+    Note over Server: 阻塞等待请求
+    
+    Main->>Main: 创建信号通道 (quit)
+    Main->>OS: 注册信号监听 (signal.Notify)
+    Main->>Main: 阻塞等待信号 (←quit)
+    
+    OS-->>Main: 发送 SIGINT/SIGTERM
+    Main->>Main: 记录信号
+    Main->>Main: 创建超时上下文 (5s)
+    Main->>Server: 发送关闭指令 (Shutdown)
+    
+    Server->>Server: 停止接受新请求
+    Server->>Server: 等待进行中请求完成
+    alt 5秒内完成
+        Server-->>Main: 返回 nil
+    else 超时
+        Server-->>Main: 返回 context.DeadlineExceeded
+    end
+    
+    Main->>Main: 记录关闭结果
+    Main->>OS: 程序退出
+```
+
+* `srv,ListenAndServe()`将会一直运行，直到服务器被关闭。正常关闭服务器时的返回值为`http.ErrServerClosed`
+
+| 时间点 |     主 goroutine     |          服务器 goroutine          |  系统状态  |
+| :----: | :------------------: | :--------------------------------: | :--------: |
+|   T0   | 启动服务器 goroutine |            开始监听端口            | 服务器启动 |
+|   T1   |     注册信号监听     |            阻塞等待请求            |   运行中   |
+|   T2   |     阻塞等待信号     |             处理请求1              |   服务中   |
+|   T3   |     收到 SIGTERM     |             处理请求2              |  信号触发  |
+|   T4   |   调用 Shutdown()    | 1. 停止接受新请求 2. 等待请求2完成 |   关闭中   |
+|   T5   |     等待关闭完成     |          完成请求2后关闭           |  清理资源  |
+|   T6   |     记录日志退出     |           goroutine 结束           |  程序终止  |
+
+```go
+package main
+
+import (
+	"GOIM/router"
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+func main() {
+	r := router.Router()
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("\nreceive signal: %v\n", sig)
+	log.Println("Shut down server ... ")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server shut down: ", err)
+	}
+	log.Println("Server exit")
+
+}
+
 ```
 

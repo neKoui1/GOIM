@@ -20,8 +20,18 @@ func (Room) CollectionName() string {
 	return "room"
 }
 
+func GetRoomByNumber(number string) (*Room, error) {
+	room := new(Room)
+	err := GetMongo().Collection(Room{}.CollectionName()).
+		FindOne(context.Background(), bson.D{
+			{Key: "number", Value: number},
+		},
+		).Decode(room)
+	return room, err
+}
+
 func InsertOntRoom(r *Room) error {
-	_, err := Mongo.Collection(Room{}.CollectionName()).
+	_, err := GetMongo().Collection(Room{}.CollectionName()).
 		InsertOne(context.Background(), r)
 	return err
 }

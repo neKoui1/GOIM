@@ -12,7 +12,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-
 func Login(c *gin.Context) {
 
 	account := c.PostForm("account")
@@ -24,7 +23,7 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
-	u,err := models.GetUserByAccount(account)
+	u, err := models.GetUserByAccount(account)
 	if err != nil {
 		fmt.Println("查询用户失败" + err.Error())
 		c.JSON(http.StatusOK, gin.H{
@@ -34,13 +33,12 @@ func Login(c *gin.Context) {
 		return
 	}
 	if !helper.CheckPassword(password, u.Password) {
-		c.JSON(http.StatusOK, gin.H {
+		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
-			"msg":"密码错误",
+			"msg":  "密码错误",
 		})
-		return 
+		return
 	}
-
 	token, err := helper.GenerateToken(u.ID, u.Email)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -50,6 +48,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	u.SetLastLoginNow()
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
 		"msg":  "登录成功",
@@ -61,14 +60,14 @@ func Login(c *gin.Context) {
 
 func Register(c *gin.Context) {
 	account := c.PostForm("account")
-	password:=c.PostForm("password")
-	nickname:=c.PostForm("nickname")
+	password := c.PostForm("password")
+	nickname := c.PostForm("nickname")
 	email := c.PostForm("email")
-	if account == "" || password == "" || 
-	nickname == "" || email == "" {
-		c.JSON(http.StatusOK,gin.H{
-			"code":-1,
-			"msg":"注册信息不完整",
+	if account == "" || password == "" ||
+		nickname == "" || email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "注册信息不完整",
 		})
 		return
 	}
@@ -88,7 +87,6 @@ func Register(c *gin.Context) {
 		return
 	}
 
-
 	savePwd, err := helper.HashPassword(password)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -97,12 +95,12 @@ func Register(c *gin.Context) {
 		})
 		return
 	}
-	u:= &models.User{
-		ID: bson.NewObjectID(),
-		Account: account,
-		Password: savePwd,
-		Nickname: nickname,
-		Email: email,
+	u := &models.User{
+		ID:        bson.NewObjectID(),
+		Account:   account,
+		Password:  savePwd,
+		Nickname:  nickname,
+		Email:     email,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		LastLogin: time.Now(),
@@ -134,22 +132,21 @@ func Register(c *gin.Context) {
 	})
 }
 
-
 func GetUserInfo(c *gin.Context) {
 	u, _ := c.Get("user_claims")
-	uc :=u.(*helper.UserClaims)
+	uc := u.(*helper.UserClaims)
 	user, err := models.GetUserByID(uc.ID)
 	if err != nil {
 		log.Printf("[DB ERROR] %v\n", err)
 		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
-			"msg": "系统错误，获取用户信息失败",
+			"msg":  "系统错误，获取用户信息失败",
 		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
-		"msg": "获取用户信息成功",
+		"msg":  "获取用户信息成功",
 		"data": user,
 	})
 }
@@ -157,35 +154,37 @@ func GetUserInfo(c *gin.Context) {
 func SendCode(c *gin.Context) {
 	email := c.PostForm("email")
 	if email == "" {
-		c.JSON(http.StatusOK, gin.H {
-			"code":-1,
-			"msg":"邮箱不能为空",
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "邮箱不能为空",
 		})
 		return
 	}
 	cnt, err := models.GetUserCountByEmail(email)
-	if err!= nil {
+	if err != nil {
 		log.Printf("[DB ERROR]: %v\n", err)
 		return
 	}
 	if cnt > 0 {
-		c.JSON(http.StatusOK,gin.H {
-			"code":-1,
-			"msg":"当前邮箱已被注册",
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "当前邮箱已被注册",
 		})
 		return
 	}
-	err = helper.SendCode(email, "123456")
+	code := helper.GetCode()
+	err = helper.SendCode(email, code)
 	if err != nil {
 		log.Printf("[ERROR] 发送验证码失败: %v\n", err)
 		c.JSON(http.StatusOK, gin.H{
-			"code":-1,
-			"msg":"发送验证码失败",
+			"code": -1,
+			"msg":  "发送验证码失败",
 		})
 		return
 	}
-	c.JSON(http.StatusOK,gin.H{
-		"code":200,
-		"msg":"验证码发送成功",
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"msg":  "验证码发送成功",
 	})
 }
