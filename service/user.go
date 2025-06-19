@@ -188,3 +188,25 @@ func SendCode(c *gin.Context) {
 		"msg":  "验证码发送成功",
 	})
 }
+
+type UserQueryResult struct {
+	Account  string `bson:"account" json:"account"`
+	Nickname string `bson:"nickname" json:"nickname"`
+	IsFriend bool   `bson:"is_friend" json:"is_friend"`
+	Gender   bool   `bson:"gender" json:"gender"` // false 女 true 男
+	Email    string `bson:"email" json:"email"`
+	Avatar   string `bson:"avatar" json:"avatar"`
+	Status   int    `bson:"status" json:"status"` // 0 离线 1 在线
+}
+
+func UserQuery(c *gin.Context) {
+	account := c.Param("account")
+	if account == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "account 参数不正确",
+		})
+		return
+	}
+
+}

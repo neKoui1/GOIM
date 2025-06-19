@@ -22,6 +22,8 @@ func Router() *gin.Engine {
 			auth := user.Group("/", middlewares.AuthCheck())
 			{
 				auth.GET("/info", service.GetUserInfo)
+				// 查询指定用户的个人信息
+				auth.GET("/query/:account", service.UserQuery)
 				auth.GET("/websocket/message", service.WebSocketMessage)
 				auth.GET("/chat/list", service.ChatList)
 			}

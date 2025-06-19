@@ -51,6 +51,21 @@ func (u *User) SetLastLoginNow() error {
 	return err
 }
 
+func GetUserList() ([]*User, error) {
+	userList := make([]*User, 0)
+	cursor, err := GetMongo().Collection(User{}.CollectionName()).
+		Find(context.Background(), bson.D{})
+	if err != nil {
+		return nil, err
+	}
+
+	err = cursor.All(context.Background(), userList)
+	if err != nil {
+		return nil, err
+	}
+	return userList, nil
+}
+
 func GetUserByAccountPassword(account, password string) (*User, error) {
 	u := new(User)
 	err := GetMongo().Collection(User{}.CollectionName()).
