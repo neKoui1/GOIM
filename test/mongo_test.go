@@ -58,6 +58,7 @@ func TestFindAllUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Log(*userList[0])
 	for _, v := range userList {
 		t.Log(v.Account)
 		t.Log(v.Nickname)

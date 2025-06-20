@@ -59,7 +59,7 @@ func GetUserList() ([]*User, error) {
 		return nil, err
 	}
 
-	err = cursor.All(context.Background(), userList)
+	err = cursor.All(context.Background(), &userList)
 	if err != nil {
 		return nil, err
 	}
