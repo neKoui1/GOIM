@@ -12,8 +12,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-var SendEmail string
-var MailPassword string
+var (
+	SendEmail    string
+	MailPassword string
+)
 
 func init() {
 	viper.SetConfigFile("./config.yaml")

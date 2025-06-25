@@ -8,6 +8,7 @@ import (
 )
 
 type Room struct {
+	Id        bson.ObjectID `bson:"_id"`
 	Number    string        `bson:"number"`
 	Name      string        `bson:"name"`
 	Info      string        `bson:"info"`

@@ -189,7 +189,7 @@ func SendCode(c *gin.Context) {
 	})
 }
 
-type UserQueryResult struct {
+type UserParamResult struct {
 	Account  string `bson:"account" json:"account"`
 	Nickname string `bson:"nickname" json:"nickname"`
 	IsFriend bool   `bson:"is_friend" json:"is_friend"`
@@ -199,7 +199,7 @@ type UserQueryResult struct {
 	Status   int    `bson:"status" json:"status"` // 0 离线 1 在线
 }
 
-func UserQuery(c *gin.Context) {
+func UserParam(c *gin.Context) {
 	account := c.Param("account")
 	if account == "" {
 		c.JSON(http.StatusOK, gin.H{
@@ -208,5 +208,140 @@ func UserQuery(c *gin.Context) {
 		})
 		return
 	}
+	u, err := models.GetUserByAccount(account)
+	if err != nil {
+		log.Println("[DB ERROR]: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "查询用户数据异常",
+		})
+		return
+	}
+	data := UserParamResult{
+		Account:  u.Account,
+		Nickname: u.Nickname,
+		Gender:   u.Gender,
+		Email:    u.Email,
+		Avatar:   u.Avatar,
+		Status:   u.Status,
+		IsFriend: false,
+	}
+	uc := c.MustGet("user_claims").(*helper.UserClaims)
+	flag, err := models.JudgeUserIsFriend(u.ID, uc.ID)
+	if err != nil {
+		log.Println("[DB ERROR]: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "查询用户数据异常",
+		})
+	}
+	if flag {
+		data.IsFriend = true
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"msg":  "数据加载成功",
+		"data": data,
+	})
+}
 
+func UserAdd(c *gin.Context) {
+	account := c.PostForm("account")
+	if account == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "参数不正确",
+		})
+		return
+	}
+	u, err := models.GetUserByAccount(account)
+	if err != nil {
+		log.Printf("[DB ERROR]: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "数据查询异常",
+		})
+		return
+	}
+	uc := c.MustGet("user_claims").(*helper.UserClaims)
+	flag, err := models.JudgeUserIsFriend(uc.ID, u.ID)
+	if err != nil {
+		log.Printf("[DB ERROR]: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "数据查询异常",
+		})
+		return
+	}
+	if flag {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "已经是好友，不可重复添加",
+		})
+		return
+	}
+
+	// 保存房间记录
+	r := &models.Room{
+		Id:        bson.NewObjectID(),
+		UserId:    uc.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = models.InsertOntRoom(r)
+	if err != nil {
+		log.Printf("[DB ERROR]: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "数据查询异常",
+		})
+		return
+	}
+	ur := &models.UserRoom{
+		UserId:    uc.ID,
+		RoomId:    r.Id,
+		RoomType:  1,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = models.InsertOneUserRoom(ur)
+	if err != nil {
+		log.Printf("[DB ERROR]: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "数据查询异常",
+		})
+		return
+	}
+
+	ur = &models.UserRoom{
+		UserId:    u.ID,
+		RoomId:    r.Id,
+		RoomType:  1,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = models.InsertOneUserRoom(ur)
+	if err != nil {
+		log.Printf("[DB ERROR]: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "数据查询异常",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"msg":  "添加成功",
+	})
+}
+
+func UserDelete(c *gin.Context) {
+	account := c.PostForm("account")
+	if account == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "参数不正确",
+		})
+	}
 }

@@ -18,13 +18,19 @@ func Router() *gin.Engine {
 			user.POST("/login", service.Login)
 			user.POST("/register", service.Register)
 			user.POST("/sendcode", service.SendCode)
-			user.GET("/download", service.ExportUserExcel)
 
 			auth := user.Group("/", middlewares.AuthCheck())
 			{
+				// 下载包括所有用户的Excel
+				user.GET("/download", service.ExportUserExcel)
 				auth.GET("/info", service.GetUserInfo)
 				// 查询指定用户的个人信息
-				auth.GET("/query/:account", service.UserQuery)
+				auth.GET("/param/:account", service.UserParam)
+				// 添加好友
+				auth.POST("/add", service.UserAdd)
+				// 删除好友
+				auth.POST("/delete", service.UserDelete)
+
 				auth.GET("/websocket/message", service.WebSocketMessage)
 				auth.GET("/chat/list", service.ChatList)
 			}
