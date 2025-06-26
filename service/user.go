@@ -337,11 +337,15 @@ func UserAdd(c *gin.Context) {
 }
 
 func UserDelete(c *gin.Context) {
-	account := c.PostForm("account")
-	if account == "" {
+	id := c.Query("id")
+	if id == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
 			"msg":  "参数不正确",
 		})
+		return
 	}
+
+	// 获取房间id
+
 }

@@ -86,6 +86,40 @@ func JudgeUserIsFriend(userId1, userId2 bson.ObjectID) (bool, error) {
 	return false, nil
 }
 
+func GetUserRoomID(userId1, userId2 bson.ObjectID) (bson.ObjectID, error) {
+	// 查询userId1 的房间
+	cursor, err := GetMongo().Collection(UserRoom{}.CollectionName()).
+		Find(context.Background(), bson.D{
+			{Key: "user_id", Value: userId1},
+			{Key: "room_type", Value: 1},
+		})
+	if err != nil {
+		return bson.NilObjectID, err
+	}
+	roomIds := make([]bson.ObjectID, 0)
+	for cursor.Next(context.Background()) {
+		ur := new(UserRoom)
+		err := cursor.Decode(ur)
+		if err != nil {
+			return bson.NilObjectID, err
+		}
+		roomIds = append(roomIds, ur.RoomId)
+	}
+	ur2 := new(UserRoom)
+	err = GetMongo().Collection(UserRoom{}.CollectionName()).
+		FindOne(context.Background(), bson.M{
+			"user_id":   userId2.Hex(),
+			"room_type": 1,
+			"room_id ": bson.M{
+				"$in": roomIds,
+			},
+		}).Decode(ur2)
+	if err != nil {
+		return bson.NilObjectID, err
+	}
+
+}
+
 func InsertOneUserRoom(ur *UserRoom) error {
 	_, err := GetMongo().Collection(UserRoom{}.CollectionName()).
 		InsertOne(context.Background(), ur)

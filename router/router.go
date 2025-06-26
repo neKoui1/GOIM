@@ -29,7 +29,7 @@ func Router() *gin.Engine {
 				// 添加好友
 				auth.POST("/add", service.UserAdd)
 				// 删除好友
-				auth.POST("/delete", service.UserDelete)
+				auth.DELETE("/delete", service.UserDelete)
 
 				auth.GET("/websocket/message", service.WebSocketMessage)
 				auth.GET("/chat/list", service.ChatList)
