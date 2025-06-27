@@ -345,7 +345,54 @@ func UserDelete(c *gin.Context) {
 		})
 		return
 	}
-
+	uc := c.MustGet("user_claims").(*helper.UserClaims)
 	// 获取房间id
+	objId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		log.Printf("id转为objectId类型失败，err: %s\n", err.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "id转为objectId类型失败: " + err.Error(),
+		})
+		return
+	}
+	roomId, err := models.GetUserRoomID(uc.ID, objId)
+	if err != nil {
+		log.Printf("[DB ERROR]: %v\n", err)
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "数据查询异常",
+		})
+	}
 
+	if roomId == bson.NilObjectID {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "非好友关系，无需删除",
+		})
+		return
+	}
+
+	// 删除user_room中关联关系
+	err = models.DeleteUserRoom(roomId)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "删除好友房间失败" + err.Error(),
+		})
+		return
+	}
+
+	// 删除room中的该房间
+	if err = models.DeleteRoom(roomId); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": -1,
+			"msg":  "删除好友房间失败" + err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"msg":  "删除成功",
+	})
 }

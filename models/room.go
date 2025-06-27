@@ -21,6 +21,10 @@ func (Room) CollectionName() string {
 	return "room"
 }
 
+// GetRoomByNumber 根据房间号获取房间信息
+// @param number 房间号
+// @return *Room 房间信息
+// @return error 错误信息
 func GetRoomByNumber(number string) (*Room, error) {
 	room := new(Room)
 	err := GetMongo().Collection(Room{}.CollectionName()).
@@ -34,5 +38,13 @@ func GetRoomByNumber(number string) (*Room, error) {
 func InsertOntRoom(r *Room) error {
 	_, err := GetMongo().Collection(Room{}.CollectionName()).
 		InsertOne(context.Background(), r)
+	return err
+}
+
+func DeleteRoom(id bson.ObjectID) error {
+	_, err := GetMongo().Collection(Room{}.CollectionName()).
+		DeleteOne(context.Background(), bson.D{
+			{Key: "_id", Value: id},
+		})
 	return err
 }

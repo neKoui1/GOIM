@@ -5,6 +5,7 @@ import (
 	"GOIM/models"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -12,7 +13,14 @@ import (
 )
 
 var upgrader = websocket.Upgrader{}
-var wc = make(map[bson.ObjectID]*websocket.Conn)
+
+// 连接写入锁
+var connLocks = make(map[bson.ObjectID]*sync.Mutex)
+var connLocksMutex sync.Mutex
+
+// room id -> user id -> conn
+var roomConnections = make(map[bson.ObjectID]map[bson.ObjectID]*websocket.Conn)
+var roomConnLock sync.RWMutex
 
 type MessageStruct struct {
 	Message string        `json:"message"`
@@ -28,10 +36,37 @@ func WebSocketMessage(c *gin.Context) {
 		})
 		return
 	}
-	defer conn.Close()
 
 	uc := c.MustGet("user_claims").(*helper.UserClaims)
-	wc[uc.ID] = conn
+
+	// 获取用户所在的房间列表
+	userRooms, err := models.GetUserRoomByUserID(uc.ID)
+	if err != nil {
+		log.Printf("Failed to get user rooms : %v\n", err)
+		conn.Close()
+		return
+	}
+
+	// 加入所有房间
+	for _, userRoom := range userRooms {
+		joinRoom(uc.ID, userRoom.RoomId, conn)
+	}
+
+	// 断开时清理
+	defer func() {
+		for _, userRoom := range userRooms {
+			leaveRoom(uc.ID, userRoom.RoomId)
+		}
+
+		// 清理连接锁
+		connLocksMutex.Lock()
+		if _, exists := connLocks[uc.ID]; exists {
+			delete(connLocks, uc.ID)
+			log.Printf("Remove user %v \n", uc.ID)
+		}
+		connLocksMutex.Unlock()
+		conn.Close()
+	}()
 
 	for {
 
@@ -47,7 +82,7 @@ func WebSocketMessage(c *gin.Context) {
 		if err != nil {
 			log.Printf("User id: %v, Room id: %v NOT EXISTS, err: %v\n",
 				uc.ID, ms.RoomId, err)
-			return
+			continue
 		}
 
 		// 保存消息
@@ -59,25 +94,64 @@ func WebSocketMessage(c *gin.Context) {
 		err = models.InsertOntMessage(msg)
 		if err != nil {
 			log.Printf("[DB ERROR]: %v\n", err)
-			return
+			continue
 		}
 
-		// 获取在特定房间的在线用户
-		userRooms, err := models.GetUserRoomByRoomID(ms.RoomId)
-		if err != nil {
-			log.Printf("[DB ERROR]: %v\n", err)
-			return
-		}
-		for _, room := range userRooms {
-			if cc, ok := wc[room.UserId]; ok {
-				err = cc.WriteMessage(websocket.TextMessage, []byte(ms.Message))
-				if err != nil {
-					log.Printf("Write Message Error: %v\n", err)
-					return
-				}
-			}
-		}
-
+		// 广播消息到房间
+		broadcastToRoom(ms.RoomId, []byte(ms.Message), uc.ID)
 	}
 
+}
+
+// 用户连接时加入房间
+func joinRoom(userID, roomID bson.ObjectID, conn *websocket.Conn) {
+	roomConnLock.Lock()
+	defer roomConnLock.Unlock()
+
+	if roomConnections[roomID] == nil {
+		roomConnections[roomID] = make(map[bson.ObjectID]*websocket.Conn)
+
+	}
+	roomConnections[roomID][userID] = conn
+}
+
+// 用户断开时离开房间
+func leaveRoom(userID, roomID bson.ObjectID) {
+	roomConnLock.Lock()
+	defer roomConnLock.Unlock()
+
+	if roomConns, exists := roomConnections[roomID]; exists {
+		delete(roomConns, userID)
+		if len(roomConns) == 0 {
+			delete(roomConnections, roomID)
+		}
+	}
+}
+
+// 向房间广播信息
+func broadcastToRoom(roomID bson.ObjectID, message []byte, senderId bson.ObjectID) {
+	roomConnLock.Lock()
+	defer roomConnLock.Unlock()
+
+	if roomConns, exists := roomConnections[roomID]; exists {
+		for userId, conn := range roomConns {
+			if senderId == userId {
+				continue
+			}
+			connLocksMutex.Lock()
+			lock, exists := connLocks[userId]
+			if !exists {
+				lock = &sync.Mutex{}
+				connLocks[userId] = lock
+			}
+			connLocksMutex.Unlock()
+
+			lock.Lock()
+			err := conn.WriteMessage(websocket.TextMessage, message)
+			lock.Unlock()
+			if err != nil {
+				log.Printf("Failed to send message to user: %v - %v", userId, err)
+			}
+		}
+	}
 }

@@ -51,6 +51,22 @@ func GetUserRoomByRoomID(roomID bson.ObjectID) ([]*UserRoom, error) {
 	return urs, nil
 }
 
+func GetUserRoomByUserID(userID bson.ObjectID) ([]*UserRoom, error) {
+	cursor, err := GetMongo().Collection(UserRoom{}.CollectionName()).
+		Find(context.Background(), bson.D{
+			{Key: "user_id", Value: userID},
+		})
+	if err != nil {
+		return nil, err
+	}
+	urs := make([]*UserRoom, 0)
+	err = cursor.All(context.Background(), &urs)
+	if err != nil {
+		return nil, err
+	}
+	return urs, nil
+}
+
 func JudgeUserIsFriend(userId1, userId2 bson.ObjectID) (bool, error) {
 	cursor, err := GetMongo().Collection(UserRoom{}.CollectionName()).
 		Find(context.Background(), bson.D{
@@ -105,7 +121,7 @@ func GetUserRoomID(userId1, userId2 bson.ObjectID) (bson.ObjectID, error) {
 		}
 		roomIds = append(roomIds, ur.RoomId)
 	}
-	ur2 := new(UserRoom)
+	ur := new(UserRoom)
 	err = GetMongo().Collection(UserRoom{}.CollectionName()).
 		FindOne(context.Background(), bson.M{
 			"user_id":   userId2.Hex(),
@@ -113,11 +129,22 @@ func GetUserRoomID(userId1, userId2 bson.ObjectID) (bson.ObjectID, error) {
 			"room_id ": bson.M{
 				"$in": roomIds,
 			},
-		}).Decode(ur2)
+		}).Decode(ur)
 	if err != nil {
 		return bson.NilObjectID, err
 	}
+	return ur.RoomId, nil
+}
 
+func DeleteUserRoom(roomId bson.ObjectID) error {
+	_, err := GetMongo().Collection(UserRoom{}.CollectionName()).
+		DeleteMany(context.Background(), bson.D{
+			{Key: "room_id", Value: roomId},
+		})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func InsertOneUserRoom(ur *UserRoom) error {
