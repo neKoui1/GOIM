@@ -32,7 +32,7 @@ func WebSocketMessage(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
-			"msg":  "系统异常" + err.Error(),
+			"msg":  "系统异常: " + err.Error(),
 		})
 		return
 	}
