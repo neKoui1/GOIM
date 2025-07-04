@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package person;
+
+option go_package="GOIM/pb/person;person"; // 完全路径;别名
+
+message Home {
+    repeated Person Persons = 1;
+    message Visitor {
+        string Name = 1;
+    }
+}
+
+message Person{
+    string Name = 1; // 数字是唯一标识符
+    int32 Age = 2;
+    bool Sex = 3;
+    repeated string test = 4; // string数组
+    map<string,string> testMap = 5; // string map
+}

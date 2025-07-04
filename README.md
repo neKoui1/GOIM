@@ -82,7 +82,7 @@
 - **挑战：** 结构相对固定、读多写少、需要事务支持（如修改群信息、增减成员）。
 - **主流选项：**
   - **关系数据库 (RDBMS):**
-    - **MySQL/PostgreSQL:** **非常合适的选择。**
+    - **MySQL/PostgreSQL:** 
       - **优势：** 强一致性事务（确保群操作原子性）、丰富的查询能力（复杂条件过滤、聚合）、成熟的权限管理和数据完整性约束。表结构清晰。
       - **劣势：** 水平扩展仍是挑战，但这类数据通常增长较慢，单库或主从复制往往能满足需求。如果规模极大，可考虑分库分表或 NewSQL。
   - **NoSQL (文档数据库):**
@@ -964,3 +964,30 @@ func main() {
 
 ```
 
+# `grpc`学习
+
+* `REST`: `Representational State Transfer Application Programming Interface``
+* `graphql`: `query` `mutation` `subscription` 解析JSON，系统需要消耗更多资源
+* `rpc`: `stub` 序列化为二进制串进行传输，资源消耗更少
+* `grpc`: 基于HTTP/2构建，有HPACK压缩，支持单向、双向的流式传输，但不能直接调用浏览器的grpc服务，因此grpc常见于分布式系统的微服务中（实现服务器和服务器之间的交流）
+* `trpc`: `typescript`全栈常用的rpc框架
+
+![image-20250703153253231](https://cdn.jsdelivr.net/gh/neKoui1/picgo_images/img/20250703153300515.png)
+
+```protobuf
+service Eggs {
+	rpc ChickenEgg(ChickenEggRequest) returns(ChickenEggResponse) {}
+}
+
+message ChickenEggRequest {
+	string name = 1;
+}
+
+message ChickenEggResponse {
+	string message = 1;
+}
+```
+
+* `service`定义服务名称和RPC端点
+* `ChickenEgg`是客户端的`stub`函数
+* `message`定义数据、请求和响应
